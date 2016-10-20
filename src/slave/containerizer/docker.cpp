@@ -59,6 +59,7 @@
 #include "slave/containerizer/mesos/isolators/cgroups/constants.hpp"
 
 #include "usage/usage.hpp"
+#include <stout/uuid.hpp>
 
 using namespace process;
 
@@ -96,6 +97,7 @@ const string DOCKER_SYMLINK_DIRECTORY = "docker/links";
 Option<ContainerID> parse(const Docker::Container& container)
 {
   Option<string> name = None();
+  Option<ContainerID> containerId = None();
 
   if (strings::startsWith(container.name, DOCKER_NAME_PREFIX)) {
     name = strings::remove(
@@ -116,18 +118,24 @@ Option<ContainerID> parse(const Docker::Container& container)
     if (!strings::contains(name.get(), DOCKER_NAME_SEPERATOR)) {
       ContainerID id;
       id.set_value(name.get());
-      return id;
+      containerId = id;
     }
 
     vector<string> parts = strings::split(name.get(), DOCKER_NAME_SEPERATOR);
     if (parts.size() == 2 || parts.size() == 3) {
       ContainerID id;
       id.set_value(parts[1]);
-      return id;
+      containerId = id;
+    }
+
+    // Check if id is a valid UUID
+    Try<UUID> uuid = UUID::fromString(containerId.get().value());
+    if (uuid.isError()) {
+      return None();
     }
   }
 
-  return None();
+  return containerId;
 }
 
 

@@ -1448,6 +1448,67 @@ TEST_F(DockerContainerizerTest, ROOT_DOCKER_SkipRecoverNonDocker)
   EXPECT_EQ(0u, containers.get().size());
 }
 
+// This test checks the docker containerizer doesn't recover containers
+// with malformed uuid
+TEST_F(DockerContainerizerTest, ROOT_DOCKER_SkipRecoverMalformedUUID)
+{
+  MockDocker* mockDocker =
+    new MockDocker(tests::flags.docker, tests::flags.docker_socket);
+
+  Shared<Docker> docker(mockDocker);
+
+  slave::Flags flags = CreateSlaveFlags();
+  flags.docker_kill_orphans = true;
+
+  Fetcher fetcher;
+
+  Try<ContainerLogger*> logger =
+    ContainerLogger::create(flags.container_logger);
+
+  ASSERT_SOME(logger);
+
+  MockDockerContainerizer dockerContainerizer(
+      flags,
+      &fetcher,
+      Owned<ContainerLogger>(logger.get()),
+      docker);
+
+  ContainerID containerId;
+  containerId.set_value("malformedUUID");
+
+  ExecutorID executorId;
+  executorId.set_value(UUID::random().toString());
+
+  ExecutorInfo executorInfo;
+  executorInfo.mutable_container()->set_type(ContainerInfo::DOCKER);
+
+  ExecutorState executorState;
+  executorState.info = executorInfo;
+  executorState.latest = containerId;
+
+  RunState runState;
+  runState.id = containerId;
+  executorState.runs.put(containerId, runState);
+
+  FrameworkState frameworkState;
+  frameworkState.executors.put(executorId, executorState);
+
+  SlaveState slaveState;
+  FrameworkID frameworkId;
+  frameworkId.set_value(UUID::random().toString());
+  slaveState.frameworks.put(frameworkId, frameworkState);
+
+  Future<Nothing> recover = dockerContainerizer.recover(slaveState);
+  AWAIT_READY(recover);
+
+  Future<hashset<ContainerID>> containers = dockerContainerizer.containers();
+  AWAIT_READY(containers);
+
+  // A task with malformed uuid shouldn't be recovered by
+  // DockerContainerizer.
+  EXPECT_EQ(0u, containers.get().size());
+}
+
 
 #ifdef __linux__
 // This test verifies that we can launch a docker container with
